@@ -1,0 +1,10 @@
+Data category,Origin/source,Fields,Availability / caveat
+Scheduled flight + route,Kaggle US Flight Delays 2025–2026,BASE_FEATURES,Flight schedule available before departure
+Arrival delay (target only),Kaggle US Flight Delays 2025–2026,"late_15, arr_delay",Observed after arrival; NEVER used as model input
+Airport coordinates + names,OurAirports airports.csv,origin/dest_lat/lon,Stable airport metadata; independently downloaded
+Cyclical time + calendar,Kaggle schedule (derived),"day of year, time sin/cos, time bands",Computed from known flight date/time
+US federal holidays,US Federal Holiday Calendar / OPM,"is_holiday, days to nearest",Known in advance; US only
+Historical delay behavior,Kaggle (prior months only),"hist_*_late_rate, hist_*_flights",No current-month or future labels
+Historical schedule volume,Kaggle (prior months only),historic_origin_hour_flights_per_month,"Sampled-schedule proxy, not live congestion"
+24-hour lead departure weather,Open-Meteo Previous Runs API,origin_wx_*,True forecast available ~12h before departure
+24-hour lead arrival weather,Open-Meteo Previous Runs API,dest_wx_*,Available ~12h before departure for flights <12h

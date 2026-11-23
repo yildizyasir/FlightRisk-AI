@@ -1,0 +1,5 @@
+streamlit>=1.42,<2
+catboost>=1.2.8,<2
+pandas>=2.2,<3
+numpy>=1.26,<3
+requests>=2.31,<3

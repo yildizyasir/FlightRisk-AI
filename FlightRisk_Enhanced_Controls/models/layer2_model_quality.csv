@@ -1,0 +1,5 @@
+metric,value
+arrival_delay_mae_min,28.58727502557082
+median_baseline_mae_min,29.970362239297476
+origin_weather_coverage,0.29166165103613806
+destination_weather_coverage,0.2880722834433124

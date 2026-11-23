@@ -1,0 +1,12 @@
+test_assets_and_feature_alignment (__main__.FlightRiskTests.test_assets_and_feature_alignment) ... ok
+test_features (__main__.FlightRiskTests.test_features) ... ok
+test_full_names (__main__.FlightRiskTests.test_full_names) ... ok
+test_holiday (__main__.FlightRiskTests.test_holiday) ... ok
+test_real_models_predict (__main__.FlightRiskTests.test_real_models_predict) ... ok
+test_timezone_jfk_to_lax (__main__.FlightRiskTests.test_timezone_jfk_to_lax) ... ok
+test_unknown_route_rejected (__main__.FlightRiskTests.test_unknown_route_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.113s
+
+OK

@@ -1,0 +1,9 @@
+FlightRisk v3 - controls, feature context, prediction scope
+
+1. Arrival delay / Departure delay selector (arrival only is a trained ML prediction).
+2. Flying / Picking someone up selector, with optional ticket arrival time.
+3. Weather, holiday, route-history information shown visibly after checking a flight.
+4. Honest missing-weather and missing-departure-model states.
+5. Existing user-trained CatBoost model and routing map left unchanged.
+
+Accuracy reminder: Arrival delay test MAE ~28.6 min. This app does not provide live flight statuses.
