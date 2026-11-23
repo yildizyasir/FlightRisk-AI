@@ -12,7 +12,7 @@ import streamlit.components.v1 as components
 from inference import (load_bundle, airport_details, airport_label, load_live_weather,
                        predict_flight, route_entry, scheduled_times, holiday_features)
 from map_visual import route_map_html
-from explanations import prediction_explanation, condition_explanations, holiday_name_on
+from explanations import condition_explanations, holiday_name_on
 
 st.set_page_config(page_title='FlightRisk | Know before you go', page_icon='✈',
                    layout='wide', initial_sidebar_state='collapsed')
@@ -93,160 +93,185 @@ html,body,[data-testid="stApp"],.stApp{background:#081321!important;color:#edf7f
 .reasons .item{font-size:12px;line-height:1.7;color:#c1d9e1;margin-top:8px}
 .reasons .note{font-size:11px;color:#95b1be;margin-top:11px;line-height:1.6}
 
+.view-switch [data-testid="stRadio"]{background:#112b3c;border:1px solid #345363;border-radius:13px;padding:5px 11px}
+.primary-summary{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.risk-pill{display:inline-block;padding:7px 13px;border:1px solid #47716f;border-radius:999px;font-size:12px;font-weight:800;color:#96f9dc;background:#173c42}
+.summary-title{font-family:Manrope,sans-serif;font-size:clamp(19px,2.6vw,27px);font-weight:800;color:#f1fbfd;line-height:1.4}
+.summary-strap{font-size:13px;color:#c4d9df;line-height:1.7;margin-top:10px}
+.summary-fine{font-size:12px;color:#a9c3cb;line-height:1.75;margin-top:8px}
+.mini-meta{margin:13px 0 0;display:flex;gap:10px;flex-wrap:wrap}
+.mini-meta span{color:#b8d2da;font-size:11px;padding:7px 10px;border:1px solid #2c5160;border-radius:9px;background:#123142}
+.status-line{color:#a5c8cb;font-size:12px;line-height:1.75;margin-top:10px}
+
 </style>''',unsafe_allow_html=True)
 
 
 
-meta,routes,model,arrival_model=load_bundle()
+meta, routes, model, arrival_model = load_bundle()
 
 st.markdown('''<div class="nav"><div class="brand"><span class="brand-mark">✈</span> FlightRisk<span class="accent">.</span></div>
-<div class="tag"><span class="tagdot"></span>FLIGHT INTELLIGENCE</div></div>
-<div class="hero-eyebrow">Your journey, made clearer</div>
-<h1 class="hero-heading">More clarity.<br><span class="mint">Less uncertainty.</span></h1>
-<p class="hero-sub">Know your flight's delay risk before you travel — or get a more useful arrival estimate before picking someone up.</p>''',unsafe_allow_html=True)
+<div class="tag"><span class="tagdot"></span>ARRIVAL INTELLIGENCE</div></div>
+<div class="hero-eyebrow">Travel with more confidence</div>
+<h1 class="hero-heading">Know your route.<br><span class="mint">Plan your arrival.</span></h1>
+<p class="hero-sub">Understand the chance of arriving late and see an approximate arrival time — without confusing flight statistics or technical jargon.</p>''',unsafe_allow_html=True)
 
-left,right=st.columns([.95,1.45],gap='large')
+left, right = st.columns([.95,1.45],gap='large')
 with left:
     with st.container(border=True):
-        st.markdown('<div class="panelhead">Check a flight</div><div class="panelsub">Choose your route and planned departure. We’ll take care of the rest.</div>',unsafe_allow_html=True)
-        journey=st.radio('Why are you checking?',options=['I’m flying','I’m picking someone up'],horizontal=True)
-        outlook=st.radio('What would you like to see?',options=['Arrival delay','Departure delay'],horizontal=True,
-                         help='The current trained models predict arrival delay only.')
-        if outlook=='Departure delay':
-            st.markdown('<div class="intent-hint">A separate departure-delay prediction model has not been trained yet. You can view the planned departure, route and travel-day conditions, but no departure-delay risk percentage will be shown.</div>',unsafe_allow_html=True)
+        st.markdown('<div class="panelhead">Check an arrival</div><div class="panelsub">Select a route and scheduled departure. We’ll estimate arrival delay based on historical flights.</div>',unsafe_allow_html=True)
+        journey = st.radio('I want to…',options=['Check my flight','Pick someone up'],horizontal=True,key='journey')
         airlines=sorted(routes['airline'].unique())
         default_airline='Delta Air Lines' if 'Delta Air Lines' in airlines else airlines[0]
-        airline=st.selectbox('Airline',options=airlines,index=airlines.index(default_airline))
+        airline=st.selectbox('Airline',options=airlines,index=airlines.index(default_airline),key='airline')
         r1=routes.loc[routes['airline']==airline]
-        origin_codes=sorted(r1['origin'].unique(),key=lambda x:airport_label(x,meta))
+        origin_codes=sorted(r1['origin'].unique(),key=lambda c:airport_label(c,meta))
         default_origin='ATL' if 'ATL' in origin_codes else origin_codes[0]
         origin=st.selectbox('Departure airport',origin_codes,index=origin_codes.index(default_origin),
-                            format_func=lambda c:airport_label(c,meta))
+                            format_func=lambda c:airport_label(c,meta),key='origin')
         r2=r1.loc[r1['origin']==origin]
-        dest_codes=sorted(r2['dest'].unique(),key=lambda x:airport_label(x,meta))
+        dest_codes=sorted(r2['dest'].unique(),key=lambda c:airport_label(c,meta))
         default_dest='MCO' if 'MCO' in dest_codes else dest_codes[0]
         dest=st.selectbox('Arrival airport',dest_codes,index=dest_codes.index(default_dest),
-                          format_func=lambda c:airport_label(c,meta))
+                          format_func=lambda c:airport_label(c,meta),key='dest')
         a,b=st.columns(2,gap='small')
-        with a: travel_date=st.date_input('Travel date',value=date.today()+timedelta(days=1),min_value=date.today(),max_value=date.today()+timedelta(days=365),format='DD/MM/YYYY')
-        with b: departure_time=st.time_input('Scheduled departure',value=time(14,0),step=timedelta(minutes=15))
-        set_ticket=False
-        if journey=='I’m picking someone up' and outlook=='Arrival delay':
-            set_ticket=st.checkbox('I know the scheduled arrival time from the ticket',value=False)
-            if set_ticket:
-                ref=route_entry(routes,airline,origin,dest)
-                _,typical_arrival=scheduled_times(travel_date,departure_time,float(ref['sched_elapsed_time']),origin,dest,meta)
-                ac,bc=st.columns(2,gap='small')
-                with ac: ticket_arrival_date=st.date_input('Arrival date (destination time)',value=typical_arrival.date(),format='DD/MM/YYYY')
-                with bc: ticket_arrival_time=st.time_input('Ticket arrival time',value=typical_arrival.time().replace(second=0,microsecond=0),step=timedelta(minutes=15))
-        check=st.button('Check arrival risk  →' if outlook=='Arrival delay' else 'View departure details  →',type='primary',use_container_width=True)
-        st.markdown('<div class="small-note">Historical estimate, not live flight tracking. Currently covers US domestic routes.</div>',unsafe_allow_html=True)
+        with a:
+            travel_date=st.date_input('Travel date',value=date.today()+timedelta(days=1),
+                min_value=date(2025,1,1),max_value=date(2030,12,31),
+                format='DD/MM/YYYY',key='travel_date',help='Dates from 2025 through 2030. Later years are extrapolations of historical patterns.')
+        with b:
+            departure_time=st.time_input('Scheduled departure',value=time(14,0),
+                step=timedelta(minutes=15),key='departure_time')
+
+        set_ticket=st.checkbox('Use the scheduled arrival time from my ticket (more accurate reference)',
+                               value=False,key='set_ticket')
+        ticket_arrival_date=None;ticket_arrival_time=None
+        if set_ticket:
+            ref=route_entry(routes,airline,origin,dest)
+            _,typical_arrival=scheduled_times(travel_date,departure_time,float(ref['sched_elapsed_time']),origin,dest,meta)
+            ac,bc=st.columns(2,gap='small')
+            with ac:
+                ticket_arrival_date=st.date_input('Ticket arrival date',value=typical_arrival.date(),
+                                                 format='DD/MM/YYYY',key='ticket_arrival_date')
+            with bc:
+                ticket_arrival_time=st.time_input('Ticket arrival time (destination local)',
+                                                 value=typical_arrival.time().replace(second=0,microsecond=0),
+                                                 step=timedelta(minutes=5),key='ticket_arrival_time')
+        check=st.button('Estimate arrival  →',type='primary',use_container_width=True)
+        st.markdown('<div class="small-note">US domestic routes only · Historical estimates, not live flight tracking · Flight schedules are not checked.</div>',unsafe_allow_html=True)
 
 with right:
     components.html(route_map_html(origin,dest,meta),height=479,scrolling=False)
     o=airport_details(origin,meta);d=airport_details(dest,meta)
     st.markdown(f'''<div class="routebar"><div><div class="iata">{escape(origin)}</div><div class="city">{escape(o['city'])}</div></div>
-    <div class="arrow">✈</div><div class="right"><div class="iata">{escape(dest)}</div><div class="city">{escape(d['city'])}</div></div></div>''',unsafe_allow_html=True)
+        <div class="arrow">✈</div><div class="right"><div class="iata">{escape(dest)}</div><div class="city">{escape(d['city'])}</div></div></div>''',unsafe_allow_html=True)
 
-query=(journey,outlook,airline,origin,dest,travel_date.isoformat(),departure_time.isoformat(),
-       bool(set_ticket), str(ticket_arrival_date) if set_ticket else None,
+query=(journey,airline,origin,dest,travel_date.isoformat(),departure_time.isoformat(),
+       bool(set_ticket),str(ticket_arrival_date) if set_ticket else None,
        str(ticket_arrival_time) if set_ticket else None)
 if check:
     try:
-        # Obtain scheduled times without making a model prediction first.
         ref=route_entry(routes,airline,origin,dest)
-        dep_dt,arr_dt=scheduled_times(travel_date,departure_time,float(ref['sched_elapsed_time']),origin,dest,meta)
-        with st.spinner('Checking your flight...'):
+        dep_dt, arr_dt=scheduled_times(travel_date,departure_time,
+            float(ref['sched_elapsed_time']),origin,dest,meta)
+        with st.spinner('Estimating arrival…'):
             weather,wx_note=load_live_weather(origin,dest,dep_dt,arr_dt)
-            result=(predict_flight(airline,origin,dest,travel_date,departure_time,weather=weather)
-                    if outlook=='Arrival delay' else None)
-        st.session_state['result']=(query,result,wx_note,weather,dep_dt,arr_dt)
-    except Exception as exc:
-        st.error('We couldn’t complete this estimate. Please try a different route or time.')
+            result=predict_flight(airline,origin,dest,travel_date,departure_time,weather=weather)
+        st.session_state['result']=(query,result,wx_note,weather)
+    except Exception:
+        st.error('We couldn’t complete this estimate. Please choose a different route or time.')
         st.session_state.pop('result',None)
-        # Developers can inspect the exception locally; never show raw errors to customers.
 
 if 'result' in st.session_state:
-    last_query,res,wx_note,weather,dep_dt,arr_dt=st.session_state['result']
-    if last_query==query:
-        if outlook=='Departure delay':
-            st.markdown(f'''<div class="results">
-              <div class="eyebrow">Your departure details</div>
-              <div class="result-flex"><div><div class="risk-label">Scheduled departure: {escape(dep_dt.strftime('%I:%M %p'))}</div>
-              <div class="risk-caption">{escape(dep_dt.strftime('%a %d %b %Y · %Z'))} · origin local time</div></div></div>
-              <div class="results-foot">A departure-delay prediction is not available yet. We do not substitute an arrival-delay score for it. Check the airline or airport for live departure status.</div>
-              </div>''',unsafe_allow_html=True)
+    last_query,res,wx_note,weather=st.session_state['result']
+    if last_query == query:
+        scheduled=res.typical_scheduled_arrival
+        source_note='Arrival time is based on a typical historical flight duration, not a verified timetable.'
+        if set_ticket:
+            # Let the timezone of the destination determine the local ticket time.
+            booked=datetime.combine(ticket_arrival_date,ticket_arrival_time).replace(tzinfo=scheduled.tzinfo)
+            scheduled=booked
+            source_note='Arrival time is calculated using the ticket schedule you entered.'
+
+        predicted=scheduled+timedelta(minutes=res.arrival_delay_minutes)
+        # Do not imply minute-level precision when the held-out MAE is ~29 min.
+        rounded=predicted+timedelta(minutes=5)
+        rounded=rounded.replace(minute=(rounded.minute//10)*10,second=0,microsecond=0)
+        pct=int(round(res.late_probability*100))
+        if pct<25:
+            band='Lower estimated delay risk'
+        elif pct<50:
+            band='Moderate estimated delay risk'
         else:
-            p=int(round(res.late_probability*100))
-            message=("A delay of 15 minutes or more is more likely than an on-time arrival."
-                     if res.late_probability>=0.5 else
-                     "A delay of 15 minutes or more is less likely than not.")
-            when=res.estimated_arrival
-            scheduled=res.typical_scheduled_arrival
-            original_schedule_note='Based on typical scheduled flight duration for this airline and route.'
-            if journey=='I’m picking someone up' and set_ticket:
-                booked=datetime.combine(ticket_arrival_date,ticket_arrival_time).replace(tzinfo=scheduled.tzinfo)
-                scheduled=booked
-                when=booked+timedelta(minutes=res.arrival_delay_minutes)
-                original_schedule_note='Uses the scheduled arrival time you entered from the ticket.'
-            delta=res.arrival_delay_minutes
-            delay_label=(f"{abs(delta):.0f} min earlier" if delta<-0.5 else
-                         f"{delta:.0f} min later" if delta>0.5 else 'About on schedule')
-            def dt_label(x): return escape(x.strftime('%a %d %b, %I:%M %p %Z'))
-            st.markdown(f'''<div class="results" id="results">
-               <div class="eyebrow">{'Your pickup outlook' if journey=='I’m picking someone up' else 'Your arrival outlook'}</div>
-               <div class="result-flex"><div class="risk-number">{p}<span>%</span></div>
-               <div><div class="risk-label">Estimated chance of arriving at least 15 minutes late</div>
-               <div class="risk-caption">{message}</div></div></div>
-               <div class="detail-grid">
-                 <div class="detailbox"><div class="ey">Expected arrival · destination local time</div>
-                    <div class="big">{escape(when.strftime('%I:%M %p'))}</div>
-                    <div class="tiny">{dt_label(when)}</div></div>
-                 <div class="detailbox"><div class="ey">Compared with scheduled arrival</div>
-                    <div class="big">{escape(delay_label)}</div>
-                    <div class="tiny">Approximate estimate, not live status</div></div>
-               </div>
-               <div class="results-foot">{escape(original_schedule_note)} Average test error for arrival delay was about 29 minutes. Confirm live flight information with the airline or airport.</div>
-               </div>''',unsafe_allow_html=True)
+            band='Higher estimated delay risk'
+        arrival_time=rounded.strftime('%I:%M %p').lstrip('0')
+        schedule_time=scheduled.strftime('%I:%M %p').lstrip('0')
+        full_date=rounded.strftime('%a %d %b %Y · %Z')
+        arrival_sentence='A rough arrival-time estimate, not a live update.'
 
-            explanation = prediction_explanation(res.late_probability, res.arrival_delay_minutes)
-            st.markdown(
-                f'<div class="explainer"><div class="head">Why can these figures differ?</div>'
-                f'<div class="copy">{escape(explanation)}</div></div>',
-                unsafe_allow_html=True
-            )
+        if journey=='Pick someone up':
+            lead_title='Approximate arrival time'
+            lead_value=f'{escape(arrival_time)}'
+            lead_note='Allow extra flexibility when planning pickup. Historical prediction error averages about 29 minutes.'
+            side_title='Chance of arriving 15+ min late'
+            side_value=f'{pct}%'
+            side_note=band
+        else:
+            lead_title='Chance of arriving 15+ minutes late'
+            lead_value=f'{pct}%'
+            lead_note=f'{band}. This is the risk of a substantial arrival delay, not a promise about the exact arrival minute.'
+            side_title='Approximate arrival time'
+            side_value=escape(arrival_time)
+            side_note='Based on an independently trained arrival-time model.'
 
-        # Show the three feature-engineering groups as customer-friendly conditions.
+        st.markdown(f'''<div class="results" id="results">
+          <div class="eyebrow">{'Pickup outlook' if journey=='Pick someone up' else 'Arrival outlook'}</div>
+          <div class="primary-summary"><div class="risk-number" style="font-size:clamp(48px,6.2vw,75px);letter-spacing:-3px">{lead_value}</div>
+            <div><div class="summary-title">{escape(lead_title)}</div><div class="summary-strap">{escape(lead_note)}</div></div></div>
+          <div class="detail-grid">
+            <div class="detailbox"><div class="ey">{escape(side_title)}</div>
+              <div class="big">{side_value}</div><div class="tiny">{escape(side_note)}</div></div>
+            <div class="detailbox"><div class="ey">Scheduled arrival · destination local time</div>
+              <div class="big">{escape(schedule_time)}</div><div class="tiny">{escape(scheduled.strftime('%a %d %b %Y · %Z'))}</div></div>
+          </div><div class="mini-meta"><span>Estimated arrival date: {escape(full_date)}</span>
+          <span>Historical average arrival-time error: ~29 min</span></div>
+          <div class="results-foot">{escape(source_note)} The delay chance and the approximate arrival time are produced by different models and therefore describe different aspects of the flight. Confirm actual flight status with the airline or airport.</div>
+        </div>''',unsafe_allow_html=True)
+
         days,is_holiday,near_holiday=holiday_features(travel_date)
         if is_holiday:
             holiday_primary=holiday_name_on(travel_date) or 'US federal holiday'
-            holiday_secondary='Travel patterns can differ on holidays. This is a possible influence, not a confirmed cause of delay.'
+            holiday_secondary='Travel conditions may differ on holidays; this is not a proven cause of a particular delay.'
         elif near_holiday:
-            holiday_primary='Near a federal holiday'
-            holiday_secondary=f'A US federal holiday is {days} day(s) away. This may affect travel patterns but does not prove a delay risk.'
+            holiday_primary='Near a US federal holiday'
+            holiday_secondary='Holiday-related travel patterns may differ from typical days.'
         else:
             holiday_primary='No nearby federal holiday'
-            holiday_secondary='No US federal holiday within three days of travel.'
+            holiday_secondary='No US federal holiday within three days.'
+
         wx_parts=[]
         for side,name in [('origin','Departure'),('dest','Arrival')]:
             w=weather.get(side,{})
             if all(w.get(k) is not None for k in ('temperature_2m','wind_speed_10m','precipitation')):
-                wx_parts.append(f"{name}: {float(w['temperature_2m']):.0f}°C, wind {float(w['wind_speed_10m']):.0f} km/h, rain {float(w['precipitation']):.1f} mm")
-        wx_primary=('Available forecast' if wx_parts else 'Forecast not available')
-        wx_secondary=(' · '.join(wx_parts) if wx_parts else 'Weather-specific input is not available for this date/airport. The arrival model uses historical patterns instead.' if outlook=='Arrival delay' else 'Current weather forecast unavailable for this date/airport.')
-        st.markdown(f'''<div class="condition-heading">Weather & travel conditions</div>
-            <div class="condition-grid">
-              <div class="condition-card"><div class="kicker">☁ WEATHER</div><div class="primary">{escape(wx_primary)}</div><div class="secondary">{escape(wx_secondary)}</div></div>
-              <div class="condition-card"><div class="kicker">▦ HOLIDAY CALENDAR</div><div class="primary">{escape(holiday_primary)}</div><div class="secondary">{escape(holiday_secondary)}</div></div>
-              <div class="condition-card"><div class="kicker">✈ ROUTE & TIME</div><div class="primary">{escape(origin)} → {escape(dest)}</div><div class="secondary">{escape(airline)} · {escape(travel_date.strftime('%a %d %b'))} · {escape(departure_time.strftime('%I:%M %p'))}.{' Historical route and airline patterns inform the arrival estimate.' if outlook=='Arrival delay' else ' Flight history is available, but departure delay is not yet predicted.'}</div></div>
-            </div>''',unsafe_allow_html=True)
+                wx_parts.append(f"{name}: {float(w['temperature_2m']):.0f}°C · wind {float(w['wind_speed_10m']):.0f} km/h · rain {float(w['precipitation']):.1f} mm")
+        wx_primary='Available forecast' if wx_parts else 'Forecast not available'
+        wx_secondary=(' | '.join(wx_parts) if wx_parts else
+            'Weather data are used only for supported airports when a suitable near-term forecast exists. Otherwise the model falls back to historical patterns.')
+        st.markdown(f'''<div class="condition-heading">Conditions to be aware of</div>
+          <div class="condition-grid">
+            <div class="condition-card"><div class="kicker">☁ WEATHER</div><div class="primary">{escape(wx_primary)}</div><div class="secondary">{escape(wx_secondary)}</div></div>
+            <div class="condition-card"><div class="kicker">▦ HOLIDAY</div><div class="primary">{escape(holiday_primary)}</div><div class="secondary">{escape(holiday_secondary)}</div></div>
+            <div class="condition-card"><div class="kicker">✈ ROUTE HISTORY</div><div class="primary">{escape(origin)} → {escape(dest)}</div><div class="secondary">The model uses past patterns for this airline, route, departure time and airports.</div></div>
+          </div>''',unsafe_allow_html=True)
 
-        explanations = condition_explanations(weather,is_holiday,near_holiday)
-        notes_html = ''.join(f'<div class="item">• {escape(note)}</div>' for note in explanations)
-        if explanations:
-            st.markdown(f'<div class="reasons"><div class="head">Possible travel disruptions</div>'
-                        f'{notes_html}<div class="note">These are possible influences, not confirmed causes of a delay.</div></div>',
-                        unsafe_allow_html=True)
+        possible=condition_explanations(weather,bool(is_holiday),bool(near_holiday))
+        if possible:
+            notes_html=''.join(f'<div class="item">• {escape(note)}</div>' for note in possible)
+            st.markdown('<div class="reasons"><div class="head">Possible travel disruption factors</div>'+notes_html+
+                '<div class="note">These factors can be associated with delays, but they do not prove why an individual flight will be delayed.</div></div>',unsafe_allow_html=True)
 
-st.markdown(f'''<div class="footerline"><span>FlightRisk © 2026 · Know before you go.</span>
-<span>Based on historic US flight data · No live flight status · Cancellations not predicted</span></div>''',unsafe_allow_html=True)
+        # Model trained on a limited historical date range; do not imply validity into the far future.
+        if travel_date>date(2026,12,31):
+            st.info('This date is beyond the period represented in the training data. Treat this estimate as exploratory; airline schedules and travel conditions may change.')
+
+st.markdown('''<div class="footerline"><span>FlightRisk © 2026 · Know before you go.</span>
+<span>Historical US domestic flight data · No live status or verified flight schedule</span></div>''',unsafe_allow_html=True)
