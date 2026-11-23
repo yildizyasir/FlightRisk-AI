@@ -184,28 +184,34 @@ if 'result' in st.session_state:
         else:
             risk_line='Higher historical risk of a 15+ minute arrival delay.'
 
+        # Both modes use the SAME trained arrival-delay classifier. The app
+        # deliberately makes no claim about departure delay without a dedicated
+        # departure-delay model.
         if journey=='Pick someone up':
             lead_title='Be at the arrivals area around'
             lead_value=escape(plan['pickup_time'])
-            lead_note=escape(plan['pickup_date_label']) + ' · Allow around 30 minutes after landing to reach arrivals. Check live status before leaving.'
-            side_title='Usual arrival on this route'
+            lead_note=escape(plan['pickup_date_label']) + ' · Allow around 30 minutes after landing to reach arrivals.'
+            side_title='Typical scheduled arrival'
             side_value=escape(plan['usual_arrival'])
-            side_note=escape(plan['arrival_date_label'])
-            middle_title='Pickup location'
-            middle_value=escape(d['city'])
-            middle_note='Meet at arrivals, not at the gate. Baggage collection can take longer.'
-            result_note='Timing is approximate and based on historical route and delay patterns, not a verified flight schedule. Flights can arrive earlier or later.'
+            side_note=escape(plan['arrival_date_label']) + ' · Based on historical route schedules'
+            middle_title='Chance of 15+ min arrival delay'
+            middle_value=f'{pct}%'
+            middle_note=escape(risk_line)
+            result_note='Pickup time is a planning estimate, not a live arrival update. Check the airline’s latest arrival time before leaving.'
         else:
             lead_title='Be at the departure airport by'
             lead_value=escape(plan['airport_arrival_time'])
-            lead_note=escape(plan['airport_date_label']) + ' · Recommended 2 hours before scheduled departure for check-in, baggage drop and security.'
-            side_title='Scheduled departure you selected'
+            lead_note=escape(plan['airport_date_label']) + ' · Recommended 2 hours before departure for check-in, baggage drop and security.'
+            side_title='Scheduled departure'
             side_value=escape(plan['departure_time'])
             side_note=escape(plan['departure_date_label'])
-            middle_title='Arrival outlook'
-            middle_value='Plan for changes'
+            middle_title='Chance of 15+ min arrival delay'
+            middle_value=f'{pct}%'
             middle_note=escape(risk_line)
-            result_note='This is a general recommendation for US domestic flights, not a prediction of security wait time. Confirm your airline’s check-in cutoff.'
+            result_note='Delay percentage refers to arrival, not departure. The airport arrival time is travel guidance; check your airline’s latest schedule.'
+
+        if travel_date < date(2025,1,1) or travel_date > date(2026,8,31):
+            result_note += ' Forecast confidence is lower for dates far outside the observed period.'
 
         st.markdown(f'''<div class="results" id="results">
           <div class="eyebrow">{'Your pickup plan' if journey=='Pick someone up' else 'Your airport plan'}</div>
@@ -252,9 +258,6 @@ if 'result' in st.session_state:
             st.markdown('<div class="reasons"><div class="head">Possible travel disruption factors</div>'+notes_html+
                 '<div class="note">These factors can be associated with delays, but they do not prove why an individual flight will be delayed.</div></div>',unsafe_allow_html=True)
 
-        # Model trained on a limited historical date range; do not imply validity into the far future.
-        if travel_date < date(2025,1,1) or travel_date > date(2026,8,31):
-            st.info('This date is outside the training period. The estimate may be less reliable. Verify the flight timetable with the airline.')
 
 st.markdown('''<div class="footerline"><span>FlightRisk © 2026 · Know before you go.</span>
 <span>Historical US domestic flight data · No live status or verified flight schedule</span></div>''',unsafe_allow_html=True)
